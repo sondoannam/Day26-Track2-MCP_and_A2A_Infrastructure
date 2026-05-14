@@ -16,10 +16,14 @@ from typing import Any
 
 from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
+from langgraph.checkpoint.memory import MemorySaver
 
 from common.llm import get_llm
 
 logger = logging.getLogger(__name__)
+
+# Global memory to persist across A2A requests in the same process
+memory = MemorySaver()
 
 CUSTOMER_SYSTEM_PROMPT = """You are a helpful legal assistant at the front desk of a multi-agent
 legal services platform. Your job is to:
@@ -92,5 +96,6 @@ def build_graph(trace_id: str, context_id: str, depth: int) -> Any:
         model=llm,
         tools=[delegate_to_legal_agent],
         prompt=CUSTOMER_SYSTEM_PROMPT,
+        checkpointer=memory,
     )
     return graph

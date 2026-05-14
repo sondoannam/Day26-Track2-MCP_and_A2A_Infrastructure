@@ -92,6 +92,23 @@ async def main() -> None:
     )
     app = app_builder.build()
 
+    from fastapi import Request, HTTPException
+    from fastapi.responses import JSONResponse
+
+    api_key = os.getenv("A2A_API_KEY", "secret-key-123")
+    
+    @app.middleware("http")
+    async def auth_middleware(request: Request, call_next):
+        # Allow open paths for discovery and docs
+        if request.url.path in ["/.well-known/agent.json", "/docs", "/openapi.json"]:
+            return await call_next(request)
+        
+        auth_header = request.headers.get("X-API-Key")
+        if auth_header != api_key:
+            return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+            
+        return await call_next(request)
+
     config = uvicorn.Config(app, host="0.0.0.0", port=PORT, log_level="info")
     server = uvicorn.Server(config)
     logger.info("Compliance Agent listening on port %d", PORT)

@@ -172,7 +172,25 @@ def check_compliance_requirements(industry: str, company_size: str) -> str:
     )
 
 
-TOOLS = [search_legal_database, calculate_penalty, check_compliance_requirements]
+@tool
+def search_case_law(topic: str) -> str:
+    """Search for relevant case law precedence based on a legal topic.
+
+    Args:
+        topic: The legal topic or issue to find cases for.
+    """
+    topic_lower = topic.lower()
+    if "tax" in topic_lower or "evasion" in topic_lower:
+        return "Case Law: United States v. Pomponio (1976) - established willful intent for tax evasion."
+    elif "privacy" in topic_lower or "data" in topic_lower:
+        return "Case Law: In re Facebook, Inc. Consumer Privacy User Profile Litigation - highlights liability for data sharing without consent."
+    elif "contract" in topic_lower or "breach" in topic_lower:
+        return "Case Law: Hadley v. Baxendale - established rule for consequential damages in contract breach."
+    else:
+        return "No specific case law found for this topic."
+
+
+TOOLS = [search_legal_database, calculate_penalty, check_compliance_requirements, search_case_law]
 
 QUESTION = (
     "A tech startup with $5M revenue was caught sharing user data without consent "

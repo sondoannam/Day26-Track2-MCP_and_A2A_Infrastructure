@@ -22,10 +22,16 @@ QUESTION = (
 
 async def main() -> None:
     print(f"Connecting to Customer Agent at {CUSTOMER_AGENT_URL}")
-    print(f"Question: {QUESTION}")
+    print("Type 'exit' or 'quit' to stop.")
     print("-" * 60)
 
-    async with httpx.AsyncClient(timeout=300.0) as http_client:
+    # Use a single context ID for the conversation thread to test memory
+    from uuid import uuid4
+    conversation_id = str(uuid4())
+
+    api_key = os.getenv("A2A_API_KEY", "secret-key-123")
+    headers = {"X-API-Key": api_key}
+    async with httpx.AsyncClient(timeout=300.0, headers=headers) as http_client:
         # Resolve agent card
         card_url = f"{CUSTOMER_AGENT_URL}/.well-known/agent.json"
         try:
@@ -39,7 +45,7 @@ async def main() -> None:
 
         from a2a.types import AgentCard, Message, Part, Role, TextPart, MessageSendParams
         from a2a.client import A2AClient
-        from uuid import uuid4
+        from a2a.types import SendMessageRequest, MessageSendParams as MSP
 
         agent_card = AgentCard.model_validate(card_resp.json())
         print(f"Connected to agent: {agent_card.name} v{agent_card.version}")
@@ -48,50 +54,57 @@ async def main() -> None:
         # Build the legacy A2AClient
         client = A2AClient(httpx_client=http_client, agent_card=agent_card)
 
-        # Construct the message
-        from a2a.types import SendMessageRequest, MessageSendParams as MSP
-        message = Message(
-            role=Role.user,
-            parts=[Part(root=TextPart(text=QUESTION))],
-            message_id=str(uuid4()),
-        )
-        request = SendMessageRequest(
-            id=str(uuid4()),
-            params=MSP(message=message),
-        )
+        while True:
+            try:
+                question = input("\nYou: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                break
+                
+            if question.lower() in ["exit", "quit", ""]:
+                break
 
-        print("Sending request (this may take 30-60s while agents chain)...\n")
-        response = await client.send_message(request)
+            message = Message(
+                role=Role.user,
+                parts=[Part(root=TextPart(text=question))],
+                message_id=str(uuid4()),
+            )
+            request = SendMessageRequest(
+                id=str(uuid4()),
+                context_id=conversation_id,  # Keep the same context_id across messages
+                params=MSP(message=message),
+            )
 
-        # Parse response
-        result_text = ""
-        if hasattr(response, "root"):
-            root = response.root
-            if hasattr(root, "result"):
-                result = root.result
-                # Task with artifacts
-                if hasattr(result, "artifacts") and result.artifacts:
-                    for artifact in result.artifacts:
-                        for part in artifact.parts:
+            print("Agent is thinking...\n")
+            try:
+                response = await client.send_message(request)
+            except Exception as e:
+                print(f"Error communicating with agent: {e}")
+                continue
+
+            # Parse response
+            result_text = ""
+            if hasattr(response, "root"):
+                root = response.root
+                if hasattr(root, "result"):
+                    result = root.result
+                    # Task with artifacts
+                    if hasattr(result, "artifacts") and result.artifacts:
+                        for artifact in result.artifacts:
+                            for part in artifact.parts:
+                                p = part.root if hasattr(part, "root") else part
+                                if hasattr(p, "text"):
+                                    result_text += p.text
+                    # Message with parts
+                    elif hasattr(result, "parts") and result.parts:
+                        for part in result.parts:
                             p = part.root if hasattr(part, "root") else part
                             if hasattr(p, "text"):
                                 result_text += p.text
-                # Message with parts
-                elif hasattr(result, "parts") and result.parts:
-                    for part in result.parts:
-                        p = part.root if hasattr(part, "root") else part
-                        if hasattr(p, "text"):
-                            result_text += p.text
 
-        if result_text:
-            print("RESPONSE:")
-            print("=" * 60)
-            print(result_text)
-            print("=" * 60)
-        else:
-            print("No text response received. Raw response:")
-            print(response)
-
+            if result_text:
+                print("Agent:", result_text)
+            else:
+                print("No text response received. Raw response:", response)
 
 if __name__ == "__main__":
     asyncio.run(main())
